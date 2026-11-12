@@ -1,0 +1,48 @@
+# ---------------- 密钥与环境 ----------------
+.env
+.env.local
+.env.*.local
+
+# ---------------- Python ----------------
+.venv/
+__pycache__/
+*.py[cod]
+
+# ---------------- 运行时产物 ----------------
+logs/
+.run/
+tmp/
+tmp_*.json
+*.db
+*.db-wal
+*.db-shm
+
+# ---------------- 本地服务结果与缓存 ----------------
+review-workbench/results/
+ingest-fixer/state.json
+ingest-fixer/logs/
+eval/qa_cache/
+eval/runs/
+eval/results_*/
+eval/baseline_*.json
+
+# ---------------- 大文件 / 离线模型 ----------------
+tei-models/
+mineru/models/
+
+# ---------------- 编辑器与截图 ----------------
+.idea/
+.vscode/
+.screenshots/
+
+# ---------------- 本地开发辅助脚本（不入库，按需删除） ----------------
+scripts/00_hello_weknora.py
+scripts/10_export_kb.py
+scripts/20_symbol_scan.py
+scripts/40_run_prompt.py
+docs/
+eval/
+md_out/
+specs/链路贯通/
+/verify_chain.py
+/samples/samples.csv

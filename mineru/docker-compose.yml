@@ -1,0 +1,26 @@
+services:
+  mineru-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mineru:4.0
+    container_name: mineru-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MINERU_MODEL_SOURCE: local
+      MINERU_MODEL_SMALL_BACKEND: onnx
+    networks:
+      - weknora
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/v1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+networks:
+  weknora:
+    external: true
+    name: weknora_WeKnora-network
