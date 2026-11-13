@@ -57,7 +57,7 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
 #   $env:EXTRACT_MODEL="qwen3-json-16k:latest"
 MODEL = os.getenv("EXTRACT_MODEL", "modelscope.cn/unsloth/Qwen3.5-4B-GGUF:latest")
 TIMEOUT = int(os.getenv("EXTRACT_TIMEOUT", "300"))
-MAX_CHARS = 24000
+MAX_CHARS = 32000
 
 # 知识库取文：默认走本机 WeKnora API；KEY 未注入时回退读仓库根目录 .env
 WEKNORA_BASE = os.getenv("WEKNORA_BASE", "http://127.0.0.1")
@@ -77,6 +77,7 @@ UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 DOC_REF_RE = re.compile(r"^(weknora://doc/|doc://)", re.I)
 UUID_SEARCH_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 DOC_EXT_RE = re.compile(r"\.(pdf|docx?|xlsx?|pptx?|md|markdown|txt|jpe?g|png|bmp|tiff?|webp)$", re.I)
+TITLE_WS_RE = re.compile(r"[\s\u3000]+")
 
 FIELD_NAMES = [
     "cert_no", "institution", "manufacturer", "product_name", "model_spec",
@@ -177,6 +178,8 @@ def _call_llm(markdown: str) -> dict:
         ],
         "stream": False,
         "format": "json",
+        # Qwen3.5 默认开启 thinking，抽取任务会一直"想"到上下文耗尽（实测 14300 tokens、
+        # content 为空、done_reason=length），必须显式关闭。
         "think": False,
         # 抽完立刻卸载：8 GB 显存装不下「抽取 8B + 对话模型」两个模型同时常驻，
         # 不卸载会互相挤显存，MCP 调用会超时（实测 300 s deadline exceeded）
@@ -188,7 +191,36 @@ def _call_llm(markdown: str) -> dict:
     )
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         content = json.loads(resp.read())["message"]["content"]
+    if not (content or "").strip():
+        raise ValueError("抽取模型返回空内容（thinking 占满了上下文，确认已关闭 think 且 num_ctx 足够）")
     return json.loads(_strip_fence(content))
+
+
+def _normalize_fields(fields: dict) -> dict:
+    """补齐模型常漏的键，避免结构问题被误报成「schema 校验失败」。
+
+    实测模型返回空字段时经常省略 quote（{"value": null, "confidence": 0}），
+    而 schema 要求 value/confidence/quote 三者都在，这里统一补齐。
+    """
+    if not isinstance(fields, dict):
+        return {}
+    for name, item in list(fields.items()):
+        if not isinstance(item, dict):
+            fields[name] = {"value": None, "confidence": 0, "quote": None}
+            continue
+        item.setdefault("quote", None)
+        item.setdefault("confidence", 0)
+        if "values" in item:
+            values = item.get("values")
+            if isinstance(values, list):
+                item["values"] = [str(v) for v in values if isinstance(v, (str, int, float))]
+            else:
+                item["values"] = [] if values in (None, "") else [str(values)]
+        elif "value" not in item:
+            item["value"] = None
+        elif item["value"] is not None and not isinstance(item["value"], str):
+            item["value"] = str(item["value"])
+    return fields
 
 
 def _field_value(item: dict) -> str:
@@ -368,6 +400,11 @@ def _normalize_ref(value: str) -> str:
     return (value or "").strip().strip(" \t\r\n\"'`<>()[]{}，,、；;")
 
 
+def _norm_title(value: str) -> str:
+    """标题归一化：去掉全部空白（含全角空格）并忽略大小写，避免模型在文件名里插空格导致匹配失败。"""
+    return TITLE_WS_RE.sub("", _normalize_ref(value)).casefold()
+
+
 def _extract_uuid(value: str) -> str:
     """从任意引用中提取第一个 UUID；没有则返回空字符串。"""
     match = UUID_SEARCH_RE.search(_normalize_ref(value))
@@ -446,6 +483,11 @@ def _list_kb_docs(kb_id: str) -> list:
     return _as_list(_weknora_get(f"/knowledge-bases/{kb_id}/knowledge"))
 
 
+def _is_param_card(doc: dict) -> bool:
+    """参数卡是入库产物（人工/manual 文档），不是可抽取的原始报告。"""
+    return (doc.get("title") or "").startswith("参数卡")
+
+
 def _resolve_doc_ref(doc_ref: str, kb_ref: str = "") -> tuple[str, str]:
     """把运行时上下文里的文档/知识库引用解析成真实 knowledge_id。
 
@@ -506,6 +548,9 @@ def _resolve_doc_ref(doc_ref: str, kb_ref: str = "") -> tuple[str, str]:
     docs = _list_kb_docs(kb_id)
     if not docs:
         raise ValueError(f"知识库「{kb_name or kb_id}」里没有文档")
+    # 用户没有点名“参数卡”时，参数卡不参与序号与名称匹配，避免抽到入库产物
+    if "参数卡" not in ref:
+        docs = [doc for doc in docs if not _is_param_card(doc)] or docs
 
     # doc://N / weknora://doc/N 序号别名
     alias = ref
@@ -520,9 +565,26 @@ def _resolve_doc_ref(doc_ref: str, kb_ref: str = "") -> tuple[str, str]:
         doc = docs[index - 1]
         return doc.get("id") or "", doc.get("title") or doc.get("file_name") or ""
 
+    def _title(doc: dict) -> str:
+        return doc.get("title") or doc.get("file_name") or ""
+
+    # 分层匹配：原样优先，归一化只作为兜底，避免标题本身的空格被判错。
+    # 1) 原样精确  2) 原样子串  3) 去空白精确  4) 去空白子串
     for doc in docs:
-        title = doc.get("title") or doc.get("file_name") or ""
-        if ref and ref in title:
+        if ref == _title(doc):
+            return doc.get("id") or "", _title(doc)
+    for doc in docs:
+        if ref and ref in _title(doc):
+            return doc.get("id") or "", _title(doc)
+
+    needle = _norm_title(ref)
+    for doc in docs:
+        title = _title(doc)
+        if needle and needle == _norm_title(title):
+            return doc.get("id") or "", title
+    for doc in docs:
+        title = _title(doc)
+        if needle and needle in _norm_title(title):
             return doc.get("id") or "", title
     raise ValueError(f"知识库「{kb_name or kb_id}」里找不到文档：{ref}")
 
@@ -544,7 +606,7 @@ def _extract(markdown: str, source_file: str, locators: list) -> dict:
     text = markdown[:MAX_CHARS] if truncated else markdown
 
     try:
-        fields = _call_llm(text)
+        fields = _normalize_fields(_call_llm(text))
     except Exception as exc:  # 模型不可用 / 超时 / 非法 JSON
         return {
             "ok": False,
@@ -714,14 +776,14 @@ def structured_search(question: str, limit: int = 20) -> str:
 
     Args:
         question: 用户问句。
-        limit: 最多返回条数，默认 20。
+        limit: 最多返回条数，默认 10。
 
     Returns:
         JSON 字符串：{"ok","query","dsl","count","rows","text"}
     """
     try:
         dsl = question_to_dsl(question)
-        rows = structured_query(dsl)[: max(1, int(limit or 20))]
+        rows = structured_query(dsl)[: max(1, int(limit or 10))]
         return json.dumps({
             "ok": True,
             "query": question,

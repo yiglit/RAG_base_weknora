@@ -9,6 +9,8 @@ import csv
 import json
 import os
 import re
+import shutil
+import sqlite3
 import sys
 import threading
 import traceback
@@ -24,6 +26,7 @@ STATIC_DIR = ROOT / "static"
 RESULTS_DIR = ROOT / "results"
 CACHE_DIR = RESULTS_DIR / ".cache"
 CERT_REGISTRY = ROOT.parent / "cert-registry"
+REGISTRY_DB = CERT_REGISTRY / "registry.db"
 EVAL_CSV = ROOT.parent / "eval" / "field_labels.csv"
 
 HOST = "127.0.0.1"
@@ -355,7 +358,7 @@ def _publisher():
 
 
 def _publish_doc(kid: str) -> dict:
-    """13 字段全部通过后，幂等入库并同步参数卡。"""
+    """13 字段全部通过后，幂等写入参数库（registry.db），不写知识库。"""
     doc = _load_doc(kid)
     if doc is None:
         raise FileNotFoundError(kid)
@@ -386,8 +389,6 @@ def _publish_doc(kid: str) -> dict:
         if current != value:
             item["value"] = value
 
-    env = _weknora_env()
-    kb_id = env.get("WEKNORA_KB_ID") or ""
     source_file = doc.get("source_file") or kid
     source_kid = doc.get("knowledge_id") or ""
     if not (len(source_kid) == 36 and source_kid.count("-") == 4):
@@ -395,13 +396,12 @@ def _publish_doc(kid: str) -> dict:
     publish = _publisher()
     try:
         result = publish(
-            {"fields": fields}, source_file, kb_id=kb_id,
-            source_knowledge_id=source_kid,
+            {"fields": fields}, source_file, source_knowledge_id=source_kid,
         )
     except ValueError:
         raise
     except Exception as exc:  # noqa: BLE001 - 统一转成可读错误
-        raise RuntimeError(f"入库失败：{exc}") from exc
+        raise RuntimeError(f"写入参数库失败：{exc}") from exc
 
     published_at = datetime.now().isoformat(timespec="seconds")
     review["published_at"] = published_at
@@ -412,6 +412,42 @@ def _publish_doc(kid: str) -> dict:
     tmp.write_text(json.dumps(review, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, review_path)
     return {"ok": True, "published_at": published_at, "publish": result}
+
+
+def _clear_reviews() -> dict:
+    """清空人工校验库：results 下的抽取结果、校对记录与页图缓存。"""
+    removed = 0
+    if RESULTS_DIR.is_dir():
+        for path in list(RESULTS_DIR.glob("*.json")):
+            path.unlink(missing_ok=True)
+            removed += 1
+    cached = 0
+    if CACHE_DIR.is_dir():
+        cached = sum(1 for path in CACHE_DIR.rglob("*") if path.is_file())
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
+    return {"ok": True, "result_files": removed, "cache_files": cached}
+
+
+def _clear_registry() -> dict:
+    """清空参数库：删除 registry.db 中所有业务表数据，保留表结构。"""
+    if not REGISTRY_DB.is_file():
+        raise ValueError("参数库不存在，尚未初始化（先运行 cert-registry/init_db.py）")
+    deleted = {}
+    conn = sqlite3.connect(REGISTRY_DB)
+    try:
+        tables = [
+            row[0] for row in conn.execute(
+                "select name from sqlite_master "
+                "where type='table' and name not like 'sqlite_%'"
+            )
+        ]
+        for name in tables:
+            cursor = conn.execute(f'delete from "{name}"')
+            deleted[name] = cursor.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "deleted": deleted}
 
 
 def _original_info(kid: str) -> dict:
@@ -536,6 +572,17 @@ class Handler(BaseHTTPRequestHandler):
                 if method != "GET":
                     return self._send_json({"error": "method not allowed"}, 405)
                 return self._send_json(_docs_list())
+
+            if path.startswith("/api/admin/clear-"):
+                if method != "POST":
+                    return self._send_json({"error": "method not allowed"}, 405)
+                if self._read_json().get("confirm") != "CLEAR":
+                    raise ValueError('清空操作需要请求体 {"confirm": "CLEAR"}')
+                if path == "/api/admin/clear-reviews":
+                    return self._send_json(_clear_reviews())
+                if path == "/api/admin/clear-registry":
+                    return self._send_json(_clear_registry())
+                return self._send_json({"error": "not found"}, 404)
 
             if path.startswith("/api/docs/"):
                 parts = path[len("/api/docs/"):].strip("/").split("/")

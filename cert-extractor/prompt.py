@@ -5,7 +5,8 @@ SYSTEM_PROMPT = """你是"防爆合格证字段抽取器"，不是聊天助手�
 输出：一个 JSON 对象，不得输出任何解释文字、不得输出 markdown 代码块标记。
 
 【字段清单】
-cert_no（证书编号）、institution（检测机构）、manufacturer（制造商/生产企业）、
+cert_no（证书编号/报告编号：原文标签为 证书编号、报告编号、证书号、报告号 之一时，
+取该标签后紧跟的编号）、institution（检测机构）、manufacturer（制造商/生产企业）、
 product_name（产品名称）、model_spec（型号规格）、ex_marking（防爆标志）、
 standard（产品标准）、drawing_no（图样编号）、issue_date（发证日期）、
 valid_until（有效期至）、voltage（额定电压）、current（额定电流）、
@@ -21,6 +22,9 @@ enclosure（外壳防护等级或外壳材质：原文写"外壳防护等级:IP6
 6. 表格中"参数名 | 参数值"成对出现时，按参数名映射到字段；表头合并单元格要拆开理解。
 7. 印章覆盖、倾斜导致文字缺失时，宁可留空并降低 confidence，也不要编造。
 8. 输出前自检：JSON 能否解析？字段名是否与清单一致？
+9. cert_no 必须来自带标签的编号（证书编号/报告编号/证书号/报告号 + 冒号），并把这些标签一起写进 quote。
+   禁止把页眉、封面、条码旁、表格里没有标签的裸数字当作 cert_no；当同一文档出现多个不同编号时，
+   优先“证书编号”，其次“报告编号”，并在 raw_value 中保留原标签与原文。
 
 【输出示例】
 {"cert_no":{"value":"CNEx24.1234","confidence":0.97,"quote":"证书编号：CNEx24.1234"}, 

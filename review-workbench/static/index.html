@@ -317,6 +317,16 @@
   .nav-btn:hover { background: #f5f6f7; }
   .nav-btn:disabled { opacity: .4; cursor: default; }
 
+  .admin-tools { flex: none; display: flex; gap: 6px; margin-left: 12px; }
+  .danger-btn {
+    padding: 4px 9px;
+    border: 1px solid #e6c9c9;
+    border-radius: 6px;
+    background: #fff;
+    color: #b42318;
+  }
+  .danger-btn:hover { background: #fdf2f2; }
+
   .progress { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .progress .bar { width: 120px; height: 6px; border-radius: 999px; background: #eceef1; overflow: hidden; }
   .progress .bar > i { display: block; height: 100%; width: 0; background: var(--green); transition: width .2s ease; }
@@ -358,6 +368,10 @@
   <div class="progress">
     <span class="counts" id="counts"></span>
     <span class="bar"><i id="progressBar"></i></span>
+  </div>
+  <div class="admin-tools">
+    <button type="button" id="btnClearReviews" class="danger-btn" title="删除 reviews 结果与页图缓存">清空校验记录</button>
+    <button type="button" id="btnClearRegistry" class="danger-btn" title="删除参数库全部业务数据">清空参数库</button>
   </div>
 </header>
 
@@ -629,7 +643,7 @@
     var ready = canPublish();
     button.disabled = !ready;
     button.title = ready
-      ? '将 13 个字段写入参数卡并同步知识库'
+      ? '将 13 个字段写入参数库（不写知识库）'
       : (c.reject > 0 ? '存在被驳回的字段，请修正后通过' : '请先完成全部字段审核');
   }
 
@@ -1123,12 +1137,9 @@
       });
       var pub = res.publish || {};
       var mode = pub.mode || '';
-      var kid = pub.knowledge_id || '';
       var dbAction = pub.db_action || '';
-      el('saveHint').textContent = '已入库（' + mode + '）· knowledge_id ' +
-        (kid || '—') + (dbAction ? ' · ' + dbAction : '');
-      toast('入库：' + mode + ' · knowledge_id ' + (kid || '—') +
-        (dbAction ? ' · ' + dbAction : ''));
+      el('saveHint').textContent = '已写入参数库（' + mode + '）' + (dbAction ? ' · ' + dbAction : '');
+      toast('参数库：' + mode + (dbAction ? ' · ' + dbAction : ''));
     } catch (err) {
       toast('入库失败：' + err.message);
     } finally {
@@ -1212,6 +1223,42 @@
       toast('加载文档失败：' + err.message);
     });
   });
+  async function clearReviews() {
+    if (!confirm('确定清空人工校验库？\n将删除 results 下全部抽取结果、校对记录和页图缓存，且不可恢复。')) return;
+    var res = await api('/api/admin/clear-reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'CLEAR' })
+    });
+    state.currentId = '';
+    await refreshDocs();
+    if (!state.docs.length) {
+      el('fieldPanel').innerHTML = '<div class="placeholder">请选择一份抽取结果</div>';
+      el('btnPublish').disabled = true;
+    }
+    toast('已清空校验记录：' + res.result_files + ' 个结果，' + res.cache_files + ' 个缓存文件');
+  }
+
+  async function clearRegistry() {
+    if (!confirm('确定清空参数库？\n将删除 registry.db 中全部证书、产品、图样、检验报告记录，且不可恢复。')) return;
+    if (!confirm('再次确认：参数库数据清空后无法找回，继续？')) return;
+    var res = await api('/api/admin/clear-registry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'CLEAR' })
+    });
+    var deleted = res.deleted || {};
+    var total = Object.keys(deleted).reduce(function (sum, key) { return sum + (deleted[key] || 0); }, 0);
+    toast('已清空参数库：' + total + ' 条记录');
+  }
+
+  el('btnClearReviews').addEventListener('click', function () {
+    clearReviews().catch(function (err) { toast('清空失败：' + err.message); });
+  });
+  el('btnClearRegistry').addEventListener('click', function () {
+    clearRegistry().catch(function (err) { toast('清空失败：' + err.message); });
+  });
+
   el('btnPrevDoc').addEventListener('click', function () { docStep(-1); });
   el('btnNextDoc').addEventListener('click', function () { docStep(1); });
   el('btnNextPending').addEventListener('click', function () { nextPending(1); });

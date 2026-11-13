@@ -43,6 +43,6 @@ scripts/40_run_prompt.py
 docs/
 eval/
 md_out/
-specs/链路贯通/
+specs/
 /verify_chain.py
 /samples/samples.csv
