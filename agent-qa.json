@@ -1,0 +1,175 @@
+{
+    "model_id": "fff2eab8-bd83-4f53-a0ea-a40c3a2efd1c",
+    "thinking": false,
+    "agent_mode": "smart-reasoning",
+    "agent_type": "rag-qa",
+    "temperature": 0,
+    "access_level": "auto_write",
+    "asr_model_id": "",
+    "mcp_services": [
+        "1b99ffa8-e3ed-4088-bba1-ab3419e3d31e"
+    ],
+    "rerank_top_k": 5,
+    "vlm_model_id": "",
+    "allowed_tools": [
+        "search_conversations",
+        "search_knowledge",
+        "read_document",
+        "list_documents",
+        "thinking"
+    ],
+    "history_turns": 1,
+    "system_prompt": "你是“防爆证书知识库”的双路检索问答助手。回答只能依据本轮工具返回的结果，禁止使用常识\n## 一、每轮必须做两路检索\nA. 语义检索（WeKnora 知识库）：调用本地知识库检索工具\nB. 条件检索（MCP 参数库）：必须先发现工具再调用：\n   1) discover_mcp_tools(mode=\"list_tools\", server_id=\"<系统里列出的 MCP 服务 ID，如 1b99ffa8-…>\")\n   2) discover_mcp_tools(mode=\"describe\", server_id=\"<同一个 server_id>\", tool_name=\"structured_search\")\n   3) 调用 describe 后出现的 structured_search 工具（名称形如 mcp_cert_extractor_structured_search；\n      若没有直接出现，用 call_mcp_tool(tool_ref=..., arguments={\"question\": 用户原问题, \"limit\": 20})）\n   注意：structured_search 在 describe 之前不可用；不要凭空写工具名，否则调用会被静默丢弃。\n## 二、绝对规则（违反任何一条都视为错误回答）\n1. 每一条结论性陈述都必须紧跟一行“出处”，格式固定为：\n   出处：证书编号=<证书编号>｜文件=<文件名或知识标题>｜定位=chunk #<chunk_index>｜原文=\"<原文片段>\"\n   并在该行末尾使用系统要求的引用标签，例如 <ref id=\"chunk://3\"/>。\n2. 证书编号、文件名、原文片段必须逐字来自同一条检索结果，不得改写编号，不得把不同证书的字段拼在一起。\n   证书编号可以来自文件名/知识标题，也可以来自片段正文；两者必须能对应到同一条检索结果。\n3. 如果检索片段和文件名里都没有证书编号，写“证书编号=片段未包含”，并且这条不得作为结论输出。\n4. 如果检索结果不足以支持结论，只输出：\n   “未在知识库中找到可引用的依据，无法给出结论。”\n   然后列出缺失的信息（如证书编号、字段名、文件范围），不得给出推测答案。\n5. 原文事实和推断必须分开：\n   - 原文事实：直接引用，并给出处；\n   - 推断：写成“推断（依据：证书编号…原文…）”，且不能当作最终结论。\n6. 多个证书对比时，逐条列出处，禁止把多个证书合并成一条出处。\n7. 只能引用本次检索结果中的 chunk 句柄；历史回答、记忆、@提及的目录都不能作为出处。\n8. 输出前自检：每条结论是否都有“证书编号 + 文件 + 定位 + 原文”？缺任何一项就删除该条。\n## 三、回答结构\n1. 直接结论：每条一句，紧跟出处行。\n2. 依据明细：可以列多条检索片段，但每条都要能对应到上面的出处。\n3. 未覆盖/无法确认：明确写出没有找到依据的字段或证书。\n## 四、禁止\n- 禁止无出处的总结、建议、经验判断；\n- 禁止编造页码、条款号、证书编号、检测机构；\n- 禁止把“推测”“通常”“一般来说”当作结论；\n- 禁止使用 [1] 之类自定义引用格式，只使用系统要求的 <ref id=\"chunk://N\"/>。\n```",
+    "enable_rewrite": false,
+    "max_iterations": 30,
+    "memory_enabled": false,
+    "embedding_top_k": 10,
+    "fallback_prompt": "",
+    "faq_score_boost": 1.2,
+    "knowledge_bases": [
+        "e195ea50-4acc-48db-b65a-f477b106c330"
+    ],
+    "rerank_model_id": "ad9f5045-c2f4-417d-9ba6-d9d9cddfd63b",
+    "selected_skills": [
+    ],
+    "citation_enabled": true,
+    "context_template": "## Reference materials (source data)\n{{contexts}}\n\n## Request metadata\nCurrent time: {{current_time}} {{current_week}}\n\n## User request\n{{query}}",
+    "llm_call_timeout": 900,
+    "reasoning_effort": "off",
+    "rerank_threshold": 0.3,
+    "vector_threshold": 0.5,
+    "fallback_response": "未在知识库中找到可引用的依据，无法给出结论。请补充证书编号或文件范围。",
+    "fallback_strategy": "fixed",
+    "kb_selection_mode": "selected",
+    "keyword_threshold": 0.3,
+    "web_fetch_enabled": false,
+    "mcp_selection_mode": "selected",
+    "multi_turn_enabled": true,
+    "web_search_enabled": false,
+    "rewrite_prompt_user": "",
+    "audio_upload_enabled": false,
+    "faq_priority_enabled": false,
+    "image_upload_enabled": false,
+    "question_suggestions": {
+        "starters": {
+            "mode": "hybrid",
+            "count": 6,
+            "items": [
+            ],
+            "enabled": false
+        },
+        "follow_ups": {
+            "mode": "hybrid",
+            "count": 3,
+            "enabled": false,
+            "categories": [
+                "clarify",
+                "deepen",
+                "action"
+            ],
+            "allow_regenerate": false,
+            "max_context_turns": 2,
+            "knowledge_fallback": true,
+            "suppress_on_fallback": true,
+            "suppress_when_answer_asks_question": true
+        }
+    },
+    "supported_file_types": [
+    ],
+    "data_analysis_enabled": false,
+    "max_completion_tokens": 8192,
+    "mcp_auth_wait_timeout": 600,
+    "rewrite_prompt_system": "",
+    "skills_selection_mode": "",
+    "enable_query_expansion": false,
+    "image_storage_provider": "",
+    "web_search_max_results": 5,
+    "chat_parser_engine_rules": [
+        {
+            "engine": "mineru",
+            "file_types": [
+                "pdf"
+            ]
+        },
+        {
+            "engine": "anydoc",
+            "file_types": [
+                "docx",
+                "doc"
+            ]
+        },
+        {
+            "engine": "anydoc",
+            "file_types": [
+                "pptx",
+                "ppt"
+            ]
+        },
+        {
+            "engine": "anydoc",
+            "file_types": [
+                "xlsx",
+                "xls"
+            ]
+        },
+        {
+            "engine": "anydoc",
+            "file_types": [
+                "epub"
+            ]
+        },
+        {
+            "engine": "builtin",
+            "file_types": [
+                "mhtml"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "csv"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "md",
+                "markdown"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "txt"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "json"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "jpg",
+                "jpeg",
+                "png",
+                "gif",
+                "bmp",
+                "tiff",
+                "webp"
+            ]
+        },
+        {
+            "engine": "builtin",
+            "file_types": [
+                "html"
+            ]
+        }
+    ],
+    "retain_retrieval_history": false,
+    "faq_direct_answer_threshold": 0.9,
+    "attachment_image_understanding": false,
+    "retrieve_kb_only_when_mentioned": false
+}

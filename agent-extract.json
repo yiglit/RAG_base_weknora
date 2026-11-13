@@ -1,0 +1,174 @@
+{
+    "model_id": "7af7b30c-990c-4d23-84e1-21f9f364f457",
+    "thinking": false,
+    "agent_mode": "smart-reasoning",
+    "agent_type": "rag-qa",
+    "temperature": 0,
+    "access_level": "auto_write",
+    "asr_model_id": "",
+    "mcp_services": [
+        "1b99ffa8-e3ed-4088-bba1-ab3419e3d31e"
+    ],
+    "rerank_top_k": 5,
+    "vlm_model_id": "4b0988ba-8081-4d55-bb82-b7006ee59b18",
+    "allowed_tools": [
+        "search_knowledge",
+        "read_document",
+        "list_documents",
+        "search_conversations"
+    ],
+    "history_turns": 1,
+    "system_prompt": "你是\"防爆合格证字段抽取器\"。字段只能来自工具返回结果，不能凭记忆或常识填写。\n【固定三步，第 3 步一律通过 call_mcp_tool 执行】\n第 1 步（必须真实调用）：discover_mcp_tools(mode=\"list_tools\", server_id=\"ms1\")\n第 2 步：从第 1 步的列表里选\"从知识库已入库文档抽取\"的那个工具\n        （它的参数里含 doc_ref / kb_ref；不要选只接受 markdown 正文的那个），\n        然后 discover_mcp_tools(mode=\"describe\", server_id=\"ms1\", tool_name=\"<照抄它的名字>\")\n第 3 步：一律用 call_mcp_tool(tool_ref=\"<第2步返回的 tool_ref>\", arguments={...})\n        按第 2 步给出的参数定义填 arguments；不要直接调用第 1/2 步里出现的裸工具名。\nserver_id 一律用 \"ms1\"，不要把文档号、知识库 ID 填进 server_id。\n没有真实调用过任何工具就结束回答，视为失败；不要跳过第 1、2 步。\n\n【第 3 步 arguments 怎么填】\n- 用户给出的是文件名（例如\"6 BM(D)X52-全塑-SYEx23.0885\"），开头的数字属于文件名本身，\n  不是\"第 6 份\"。doc_ref 直接填这段文件名，不要换算成 doc://N。\n- 只有用户明确说\"第 N 份/第一个文档\"时，才用 doc://N 序号。\n- 标题以\"参数卡\"开头的文档是入库产物，不是原始报告，禁止作为抽取对象。\n- 用户只给 doc://N → doc_ref 填该序号，kb_ref 填 \"kb://1\"（取文档所属 knowledge_base）。\n- 用户直接贴了大段证书正文 → 才用收正文的那个工具，markdown 填正文全文。\n- 不要向用户索要正文，也不要说\"请上传文件\"。\n\n【硬性输出规则】\n1. 最终消息 = 第 3 步工具返回的那个 JSON 原文，用 ```json 围栏原样输出：\n   第一个字符是 {，最后一个字符是 }，保留 ok / fields / issues / stats 全部结构。\n2. 不要把字段摊平，不要改写键名，不要只挑一部分字段，不要补解释或代码块标记。\n3. 工具调用本身不是最终消息；工具返回后必须再输出一次最终 JSON。\n4. 只要工具返回的 JSON 里有 fields，就算成功拿到结果：\n   ok=false 只表示校验有告警，不要重试、不要重复调用工具，直接原样输出。\n5. 同一份文档最多调用一次抽取工具；工具报超时/失败时最多再试一次，\n   仍失败就把工具返回的错误原文作为最终消息输出，不要自行编造错误信息。\n6. 不要抄历史消息里的旧结果，每次都要重新调用工具。",
+    "enable_rewrite": false,
+    "max_iterations": 30,
+    "memory_enabled": false,
+    "embedding_top_k": 10,
+    "fallback_prompt": "",
+    "faq_score_boost": 1.2,
+    "knowledge_bases": [
+        "e195ea50-4acc-48db-b65a-f477b106c330"
+    ],
+    "rerank_model_id": "ad9f5045-c2f4-417d-9ba6-d9d9cddfd63b",
+    "selected_skills": [
+    ],
+    "citation_enabled": true,
+    "context_template": "{{query}}",
+    "llm_call_timeout": 300,
+    "reasoning_effort": "off",
+    "rerank_threshold": 0,
+    "vector_threshold": 0.5,
+    "fallback_response": "",
+    "fallback_strategy": "model",
+    "kb_selection_mode": "selected",
+    "keyword_threshold": 0.3,
+    "web_fetch_enabled": false,
+    "mcp_selection_mode": "selected",
+    "multi_turn_enabled": true,
+    "web_search_enabled": false,
+    "rewrite_prompt_user": "",
+    "audio_upload_enabled": false,
+    "faq_priority_enabled": true,
+    "image_upload_enabled": true,
+    "question_suggestions": {
+        "starters": {
+            "mode": "hybrid",
+            "count": 6,
+            "items": [
+            ],
+            "enabled": true
+        },
+        "follow_ups": {
+            "mode": "hybrid",
+            "count": 3,
+            "enabled": false,
+            "categories": [
+                "clarify",
+                "deepen",
+                "action"
+            ],
+            "allow_regenerate": false,
+            "max_context_turns": 2,
+            "knowledge_fallback": true,
+            "suppress_on_fallback": true,
+            "suppress_when_answer_asks_question": true
+        }
+    },
+    "supported_file_types": [
+    ],
+    "data_analysis_enabled": false,
+    "max_completion_tokens": 8192,
+    "mcp_auth_wait_timeout": 600,
+    "rewrite_prompt_system": "",
+    "skills_selection_mode": "none",
+    "enable_query_expansion": false,
+    "image_storage_provider": "",
+    "web_search_max_results": 5,
+    "chat_parser_engine_rules": [
+        {
+            "engine": "mineru",
+            "file_types": [
+                "pdf"
+            ]
+        },
+        {
+            "engine": "anydoc",
+            "file_types": [
+                "docx",
+                "doc"
+            ]
+        },
+        {
+            "engine": "anydoc",
+            "file_types": [
+                "pptx",
+                "ppt"
+            ]
+        },
+        {
+            "engine": "anydoc",
+            "file_types": [
+                "xlsx",
+                "xls"
+            ]
+        },
+        {
+            "engine": "anydoc",
+            "file_types": [
+                "epub"
+            ]
+        },
+        {
+            "engine": "builtin",
+            "file_types": [
+                "mhtml"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "csv"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "md",
+                "markdown"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "txt"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "json"
+            ]
+        },
+        {
+            "engine": "simple",
+            "file_types": [
+                "jpg",
+                "jpeg",
+                "png",
+                "gif",
+                "bmp",
+                "tiff",
+                "webp"
+            ]
+        },
+        {
+            "engine": "builtin",
+            "file_types": [
+                "html"
+            ]
+        }
+    ],
+    "retain_retrieval_history": false,
+    "faq_direct_answer_threshold": 0.9,
+    "attachment_image_understanding": true,
+    "retrieve_kb_only_when_mentioned": false
+}
